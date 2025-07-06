@@ -1,0 +1,2 @@
+# Requirements for enhanced MutateX position list generator
+biopython>=1.79 
