@@ -5,9 +5,26 @@
 #
 #  HOW TO USE
 #  
-#  4.  Run    bash ELELAB_aggregate_RosettaDDGPrediction.sh          – or –
-#             qsub ELELAB_aggregate_RosettaDDGPrediction.sh
+#  4.  Run    qsub ELELAB_aggregate_RosettaDDGPrediction.sh
+#             (from the directory containing the flexddg folder)
 ##############################################################################
+
+# SGE directives for Wynton HPC scheduler
+#$ -S /bin/bash       # the shell language when run via the job scheduler [IMPORTANT]
+#$ -cwd               # job should run in the current working directory
+#$ -j y               # STDERR and STDOUT should be joined
+#$ -l mem_free=8G     # job requires up to 8 GiB of RAM per slot (aggregation can be memory intensive)
+#$ -l scratch=10G     # job requires up to 10 GiB of local /scratch space
+#$ -l h_rt=06:00:00   # job requires up to 6 hours of runtime (for long aggregation tasks)
+#$ -r y               # if job crashes, it should be restarted
+#$ -N ddg_aggregate   # job name for easier identification
+
+# Print job start information
+echo "Job started at: $(date)"
+echo "Job ID: $JOB_ID"
+echo "Running on host: $(hostname)"
+echo "Working directory: $(pwd)"
+echo "Number of slots: $NSLOTS"
 
 source /programs/sbgrid.shrc
 source /wynton/home/craik/kjander/ddg/RosettaDDGPrediction/ddg/bin/activate
@@ -38,6 +55,8 @@ done
 
 echo "Generated standard 20 AA reslist file: $RESLIST_FILE"
 
+# Run the aggregation with timing information
+echo "Starting rosetta_ddg_aggregate at: $(date)"
 rosetta_ddg_aggregate \
     -cr /wynton/home/craik/kjander/ddg/RosettaDDGPrediction/RosettaDDGPrediction/config_run/ddg_kja_prod_agg35.yaml \
     -ca /wynton/home/craik/kjander/ddg/RosettaDDGPrediction/RosettaDDGPrediction/config_aggregate/aggregate.yaml \
@@ -45,3 +64,12 @@ rosetta_ddg_aggregate \
     --mutatex-convert \
     --mutatex-reslistfile "$RESLIST_FILE" \
     -mf "$MUTINFO_PATH"
+
+echo "Aggregation completed at: $(date)"
+
+# Print job completion information and resource usage
+echo "Job completed at: $(date)"
+echo "Job ID: $JOB_ID"
+
+## End-of-job summary for debugging and usage monitoring
+[[ -n "$JOB_ID" ]] && qstat -j "$JOB_ID"  # This shows how much memory and CPU time the job used
