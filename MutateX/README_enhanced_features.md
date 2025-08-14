@@ -184,3 +184,58 @@ mutatex structure.pdb \
     --output-prefix results \
     --mode saturation
 ``` 
+
+
+
+
+
+
+
+
+
+
+
+
+Planning to update the script to: (1) support multiple motifs via repeated -q flags, (2) add an --append-output flag to avoid clobbering the output file, and (3) wire these into the main flow and the file write mode. Then I’ll run a quick example command to verify non-clobbering and multiple queries work.
+Ran tool
+Ran tool
+
+Making the script accept multiple -q motifs and add an --append-output option to avoid clobbering, then wiring these into the main flow and write mode.
+Ran tool
+
+### Yes — you can pass multiple spans and motifs in one go now
+
+- **Multiple spans in one run**: The script already supported this. Use `-s` with space-separated spans.
+- **Multiple motifs in one run**: I added repeated `-q` support. Use `-q` multiple times.
+- **Avoid clobbering output**: I added `--append-output` to append rather than overwrite.
+
+Examples:
+
+- Run with 6 spans (one invocation):
+```bash
+python3 mutateX/P1B7/generate_mutatex_position_list.py \
+  -p mutateX/P1B7/P1B7_cleaned_noSoto.pdb \
+  -s A:12-34 A:56-78 B:10-20 B:45-60 C:5-15 C:100-110 \
+  -o mutateX/P1B7/position_list.txt --validate
+```
+
+- Search multiple motifs at once (optionally with mismatches), plus manual spans, and append to an existing file:
+```bash
+python3 mutateX/P1B7/generate_mutatex_position_list.py \
+  -p mutateX/P1B7/P1B7_cleaned_noSoto.pdb \
+  -q EVQLVQ -q DIQMTQ -q GGGGS --fuzzy 1 \
+  -s A:30-37 B:50-60 \
+  -o mutateX/P1B7/position_list.txt --append-output --validate
+```
+
+Notes:
+- Within a single run, spans deduplicate before processing. If you append across multiple runs, duplicates can accumulate in the output; you can dedup after appending with:
+```bash
+sort -u -o mutateX/P1B7/position_list.txt mutateX/P1B7/position_list.txt
+```
+- To include non-standard residues as `X`, add `--include-non-standard`.
+
+- **Changes made**:
+  - `-q/--query` now accepts multiple motifs via repeated flags.
+  - Added `--append-output` to append instead of overwriting.
+  - File write honors append mode.

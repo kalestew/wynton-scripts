@@ -6,9 +6,9 @@
 #$ -l h_rt=100:00:00
 #$ -r y
 
-SOURCE_DIR="/wynton/scratch/kjander/FINAL_FULL_41D1_Array_jun24thLate/WedTarCopyRegular1"
+SOURCE_DIR="/wynton/scratch/kjander/ForthJulyP1B7mini"
 OUTPUT_DIR="/wynton/scratch/kjander"  # Specify where you want the output
-TAR_NAME="WedTarCopyRegular1.tar.gz"
+TAR_NAME="ForthJulyP1B7mini.tar.gz"
 
 echo "Starting compressed tar creation..."
 echo "Source: $SOURCE_DIR"

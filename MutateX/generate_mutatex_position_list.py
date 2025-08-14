@@ -103,7 +103,7 @@ def validate_spans_in_structure(structure, spans):
     
     return warnings
 
-def generate_position_list(structure, spans, output_file, include_non_standard=False):
+def generate_position_list(structure, spans, output_file, include_non_standard=False, append_output=False):
     """Generate a MutateX-compatible position list."""
     model = structure[0]
     pos_entries = []
@@ -121,7 +121,7 @@ def generate_position_list(structure, spans, output_file, include_non_standard=F
             
             resseq = res.id[1]
             if start <= resseq <= end:
-                res_3letter = res.resname.capitalize()
+                res_3letter = res.resname.upper()
                 
                 if res_3letter not in three_to_one:
                     if include_non_standard:
@@ -138,7 +138,8 @@ def generate_position_list(structure, spans, output_file, include_non_standard=F
                 pos_entries.append(pos_entry)
     
     # Write output file
-    with open(output_file, 'w') as f:
+    mode = 'a' if append_output else 'w'
+    with open(output_file, mode) as f:
         for entry in pos_entries:
             f.write(entry + "\n")
     
@@ -261,11 +262,12 @@ Examples:
     
     parser.add_argument("-p", "--pdb", required=True, help="Input PDB file")
     parser.add_argument("-s", "--spans", nargs='+', help="Residue spans to include (e.g., A:30-37 B:50-60)")
-    parser.add_argument("-q", "--query", help="Search for sequence motif (1-letter AA code)")
+    parser.add_argument("-q", "--query", action='append', help="Sequence motif to search (1-letter AA). Repeat -q for multiple motifs")
     parser.add_argument("--fuzzy", type=int, default=0, help="Allow up to N mismatches in sequence search (default: 0)")
     parser.add_argument("-i", "--interactive", action='store_true', help="Interactive mode for span selection")
     parser.add_argument("-o", "--output", default="position_list.txt", help="Output file name (default: position_list.txt)")
     parser.add_argument("--include-non-standard", action='store_true', help="Include non-standard residues as 'X'")
+    parser.add_argument("--append-output", action='store_true', help="Append to output file instead of overwriting")
     parser.add_argument("--validate", action='store_true', help="Validate spans and show warnings")
     
     args = parser.parse_args()
@@ -286,18 +288,19 @@ Examples:
     
     # Query sequence search
     if args.query:
-        print(f"\nSearching for sequence: {args.query} (max {args.fuzzy} mismatches)")
-        matches = find_sequence_matches(structure, args.query, args.fuzzy)
-        
-        if not matches:
-            print(f"No matches found for '{args.query}'")
-        else:
-            print(f"Found {len(matches)} match(es):")
-            for match in matches:
-                mismatch_info = f" ({match.mismatches} mismatch{'es' if match.mismatches != 1 else ''})" if match.mismatches else ""
-                span = f"{match.chain_id}:{match.start_resnum}-{match.end_resnum}"
-                print(f"  {span} [{match.sequence}]{mismatch_info}")
-                all_spans.append(span)
+        for q in args.query:
+            print(f"\nSearching for sequence: {q} (max {args.fuzzy} mismatches)")
+            matches = find_sequence_matches(structure, q, args.fuzzy)
+            
+            if not matches:
+                print(f"No matches found for '{q}'")
+            else:
+                print(f"Found {len(matches)} match(es):")
+                for match in matches:
+                    mismatch_info = f" ({match.mismatches} mismatch{'es' if match.mismatches != 1 else ''})" if match.mismatches else ""
+                    span = f"{match.chain_id}:{match.start_resnum}-{match.end_resnum}"
+                    print(f"  {span} [{match.sequence}]{mismatch_info}")
+                    all_spans.append(span)
     
     # Manual spans
     if args.spans:
@@ -334,7 +337,7 @@ Examples:
                 print(f"  - {warning}")
     
     # Generate position list
-    positions = generate_position_list(structure, parsed_spans, args.output, args.include_non_standard)
+    positions = generate_position_list(structure, parsed_spans, args.output, args.include_non_standard, args.append_output)
     
     if not positions:
         print("\nWarning: No valid positions found!")

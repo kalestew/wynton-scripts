@@ -19,6 +19,21 @@ AGG_DIR="${2:-aggregated_flexddg}"
 CHUNKS_DIR_OVERRIDE="${3:-}"
 MAX_CONCURRENCY="${MAX_CONCURRENCY:-}"   # export MAX_CONCURRENCY=50 to cap, otherwise unlimited
 
+# Resolve this script's directory to allow calling from anywhere
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROCESS_ONE_SCRIPT="${SCRIPT_DIR}/process_ddg_aggregate_one_run.sh"
+FINALIZE_SCRIPT="${SCRIPT_DIR}/process_ddg_aggregate_finalize.sh"
+
+# Sanity-check required helper scripts exist
+if [[ ! -f "${PROCESS_ONE_SCRIPT}" ]]; then
+  echo "[ERROR]  Missing helper script: ${PROCESS_ONE_SCRIPT}" >&2
+  exit 3
+fi
+if [[ ! -f "${FINALIZE_SCRIPT}" ]]; then
+  echo "[ERROR]  Missing helper script: ${FINALIZE_SCRIPT}" >&2
+  exit 3
+fi
+
 BASE="/wynton/scratch/kjander/${PROJECT}"
 RUN_LIST="$(mktemp "${BASE}/runlist.XXXX")"
 
@@ -309,7 +324,7 @@ ARRAY_JOB_RAW=$( \
        -t 1-"${NUM_RUNS}" \
        ${MAX_CONCURRENCY:+-tc ${MAX_CONCURRENCY}} \
        -v PROJECT="${PROJECT}",AGG_DIR="${AGG_DIR}",RUN_LIST="${RUN_LIST}" \
-       process_ddg_aggregate_one_run.sh )
+       "${PROCESS_ONE_SCRIPT}" )
 
 # qsub -terse returns something like "123456.1-73:1" for array jobs;
 # we only need the numeric job ID portion before the first dot.
@@ -321,7 +336,7 @@ ARRAY_JOB_ID=${ARRAY_JOB_RAW%%.*}
 qsub -N "aggFinalize_${PROJECT}" \
      -hold_jid "${ARRAY_JOB_ID}" \
      -v PROJECT="${PROJECT}",AGG_DIR="${AGG_DIR}" \
-     process_ddg_aggregate_finalize.sh
+     "${FINALIZE_SCRIPT}"
 
 echo "[INFO]  Submitted array job (${ARRAY_JOB_ID}) and finaliser job."
 echo "[INFO]  You can remove ${RUN_LIST} after the pipeline finishes." 

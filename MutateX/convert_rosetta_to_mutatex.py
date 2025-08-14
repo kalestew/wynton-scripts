@@ -2,7 +2,17 @@
 """
 Convert RosettaDDG mutinfo.txt format to MutateX position list format.
 
-RosettaDDG format: H.S.214
+Accepted Rosetta position formats in input lines (commas and/or spaces allowed):
+- H.S.214                -> chain.residue.position
+- H.S.214.A              -> chain.residue.position.mut_residue (mut part ignored)
+- H-S214A                -> chain-wtResNumMut (mut part ignored)
+- H S 214                -> space-separated chain residue position
+
+Any line may contain multiple comma-separated representations of the same
+mutation/position (e.g., "E.S.657.A,E-S657A,S657A,S657"). This tool will
+extract the chain, wild-type residue and position from any supported token in
+the line. Tokens without chain information (e.g., "S657A", "S657") are ignored.
+
 MutateX format: SH214
 """
 
@@ -11,41 +21,55 @@ import re
 import sys
 from collections import OrderedDict
 
-def parse_rosetta_position(position_str):
+def _to_one_letter(residue_code: str) -> str:
+    """Convert a residue code to one-letter if possible.
+
+    Accepts one-letter or three-letter codes. Unknowns return 'X'.
     """
-    Parse RosettaDDG position format.
-    
-    Input: "H.S.214" or "H S 214"
-    Output: ("H", "S", 214)
-    """
-    # Handle both dot-separated and space-separated formats
-    parts = position_str.replace('.', ' ').split()
-    
-    if len(parts) != 3:
-        raise ValueError(f"Invalid position format: {position_str}")
-    
-    chain = parts[0]
-    residue = parts[1].upper()
-    
-    # Handle single-letter or three-letter codes
-    if len(residue) == 3:
-        # Convert three-letter to one-letter
+    residue_code = residue_code.upper()
+    if len(residue_code) == 1:
+        return residue_code
+    if len(residue_code) == 3:
         from Bio.Data.IUPACData import protein_letters_3to1
         three_to_one = {k.upper(): v for k, v in protein_letters_3to1.items()}
-        if residue in three_to_one:
-            residue = three_to_one[residue]
-        else:
-            print(f"Warning: Unknown residue {residue}, using 'X'")
-            residue = 'X'
-    elif len(residue) != 1:
-        raise ValueError(f"Invalid residue code: {residue}")
-    
-    try:
-        resnum = int(parts[2])
-    except ValueError:
-        raise ValueError(f"Invalid residue number: {parts[2]}")
-    
-    return chain, residue, resnum
+        return three_to_one.get(residue_code, 'X')
+    return 'X'
+
+def parse_rosetta_position(position_str: str):
+    """
+    Parse a single token describing a Rosetta DDG mutation position.
+
+    Supports:
+      - "H.S.214" or "H S 214"
+      - "H.S.214.A" (mutant residue ignored)
+      - "H-S214A" (mutant residue ignored)
+
+    Returns (chain, wt_res_one_letter, resnum) or raises ValueError.
+    """
+    s = position_str.strip()
+
+    # 1) Dot/space-separated: chain residue resnum [mut]
+    parts = s.replace('.', ' ').split()
+    if len(parts) in (3, 4):
+        chain = parts[0]
+        residue = _to_one_letter(parts[1])
+        try:
+            resnum = int(parts[2])
+        except ValueError:
+            raise ValueError(f"Invalid residue number: {parts[2]}")
+        if not chain or len(chain) < 1:
+            raise ValueError(f"Invalid chain: {chain}")
+        return chain[0], residue, resnum
+
+    # 2) Hyphenated: chain-wtResNum[mut]
+    # Examples: E-S657A, E-Ser657A
+    m = re.match(r"^([A-Za-z])\-([A-Za-z]{1,3})(\d+)([A-Za-z]{1,3})?$", s)
+    if m:
+        chain, wt_res, resnum_str, _mut = m.groups()
+        residue = _to_one_letter(wt_res)
+        return chain, residue, int(resnum_str)
+
+    raise ValueError(f"Invalid position format: {position_str}")
 
 def convert_mutinfo_to_mutatex(mutinfo_file, output_file, unique_only=True):
     """
@@ -62,34 +86,35 @@ def convert_mutinfo_to_mutatex(mutinfo_file, output_file, unique_only=True):
     with open(mutinfo_file, 'r') as f:
         for line_num, line in enumerate(f, 1):
             line = line.strip()
-            
+
             # Skip empty lines and comments
             if not line or line.startswith('#'):
                 continue
-            
-            # Extract position from various formats
-            # Format 1: position mutation_dir
-            # Format 2: just position
-            parts = line.split()
-            if not parts:
-                continue
-            
-            position_str = parts[0]
-            
-            try:
-                chain, residue, resnum = parse_rosetta_position(position_str)
-                mutatex_format = f"{residue}{chain}{resnum}"
-                
-                if unique_only:
-                    if mutatex_format not in seen_positions:
-                        seen_positions.add(mutatex_format)
+
+            # Tokenize by commas and whitespace; try each token until one parses
+            tokens = [t for t in re.split(r'[\s,]+', line) if t]
+            parsed = False
+            error_messages = []
+
+            for token in tokens:
+                try:
+                    chain, residue, resnum = parse_rosetta_position(token)
+                    mutatex_format = f"{residue}{chain}{resnum}"
+                    if unique_only:
+                        if mutatex_format not in seen_positions:
+                            seen_positions.add(mutatex_format)
+                            positions.append(mutatex_format)
+                    else:
                         positions.append(mutatex_format)
-                else:
-                    positions.append(mutatex_format)
-                    
-            except ValueError as e:
-                print(f"Warning: Line {line_num}: {e} - skipping line: '{line}'")
-                continue
+                    parsed = True
+                    break
+                except ValueError as e:
+                    error_messages.append(str(e))
+
+            if not parsed:
+                print(
+                    f"Warning: Line {line_num}: Could not parse any token - skipping line: '{line}'"
+                )
     
     # Write output
     with open(output_file, 'w') as f:
